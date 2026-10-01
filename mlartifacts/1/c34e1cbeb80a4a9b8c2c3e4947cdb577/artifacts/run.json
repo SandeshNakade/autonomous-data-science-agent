@@ -1,0 +1,135 @@
+{
+  "completed_at": "2026-09-29T07:25:47.379137+00:00",
+  "dataset": {
+    "columns": 7,
+    "path": "C:\\Users\\sande\\OneDrive\\Desktop\\mlops cp\\data\\raw\\dataset.csv",
+    "rows": 1000,
+    "sha256": "af58c78faf1679181f94b03d89c9a3515fb833cd60d8f0f6ad0bfab9aa892453"
+  },
+  "events": [
+    {
+      "action": "run_experiment",
+      "at": "2026-09-29T07:25:46.648567+00:00",
+      "kind": "decision",
+      "model_name": "logistic_regression",
+      "reason": "Start with the simplest approved baseline and evaluate f1 against 0.9.",
+      "strategy": "interpretable_baseline"
+    },
+    {
+      "action": "run_experiment",
+      "at": "2026-09-29T07:25:46.737582+00:00",
+      "kind": "decision",
+      "model_name": "random_forest",
+      "reason": "Best so far is 0.6809. It misses the acceptance criterion, so try the next untried approved recipe: random_forest.",
+      "strategy": "controlled_model_improvement"
+    },
+    {
+      "action": "run_experiment",
+      "at": "2026-09-29T07:25:47.153557+00:00",
+      "kind": "decision",
+      "model_name": "xgboost",
+      "reason": "Best so far is 0.6809. It misses the acceptance criterion, so try the next untried approved recipe: xgboost.",
+      "strategy": "controlled_model_improvement"
+    },
+    {
+      "action": "stop",
+      "at": "2026-09-29T07:25:47.378097+00:00",
+      "kind": "decision",
+      "model_name": "logistic_regression",
+      "reason": "The bounded experiment budget was exhausted before acceptance.",
+      "strategy": "experiment_budget_exhausted"
+    }
+  ],
+  "experiments": [
+    {
+      "elapsed_seconds": 0.0599,
+      "error": null,
+      "experiment_id": "ed4fa346-trial-1",
+      "metric": "f1",
+      "metrics": {
+        "accuracy": 0.775,
+        "f1": 0.6808510638297872,
+        "f1_macro": 0.7535529450423067,
+        "roc_auc": 0.8404074702886247
+      },
+      "model_name": "logistic_regression",
+      "score": 0.6808510638297872,
+      "status": "completed",
+      "strategy": "interpretable_baseline"
+    },
+    {
+      "elapsed_seconds": 0.3932,
+      "error": null,
+      "experiment_id": "ed4fa346-trial-2",
+      "metric": "f1",
+      "metrics": {
+        "accuracy": 0.71,
+        "f1": 0.5972222222222222,
+        "f1_macro": 0.6853298611111112,
+        "roc_auc": 0.7917020373514432
+      },
+      "model_name": "random_forest",
+      "score": 0.5972222222222222,
+      "status": "completed",
+      "strategy": "controlled_model_improvement"
+    },
+    {
+      "elapsed_seconds": 0.2017,
+      "error": null,
+      "experiment_id": "ed4fa346-trial-3",
+      "metric": "f1",
+      "metrics": {
+        "accuracy": 0.715,
+        "f1": 0.6122448979591837,
+        "f1_macro": 0.6934742276357183,
+        "roc_auc": 0.79223259762309
+      },
+      "model_name": "xgboost",
+      "score": 0.6122448979591837,
+      "status": "completed",
+      "strategy": "controlled_model_improvement"
+    }
+  ],
+  "final_evaluation": null,
+  "objective": "Classify churn with F1 at least 0.90.",
+  "plan": {
+    "acceptance_threshold": 0.9,
+    "candidate_models": [
+      "logistic_regression",
+      "random_forest",
+      "xgboost"
+    ],
+    "max_experiments": 3,
+    "metric": "f1",
+    "objective": "Classify churn with F1 at least 0.90.",
+    "preprocessing": {
+      "categorical_imputation": "most_frequent",
+      "excluded_columns": [
+        "customer_id"
+      ],
+      "numeric_imputation": "median",
+      "one_hot_encode": true,
+      "scale_numeric": true
+    },
+    "random_state": 42,
+    "reasoning": [
+      "Selected 'churn' as the target from the objective/profile.",
+      "Inferred binary_classification from target type and objective wording.",
+      "Will optimise f1 against an explicit threshold of 0.9.",
+      "Candidate recipes are fixed allowlisted estimators; no generated code is executable.",
+      "Excluded likely identifier columns: customer_id."
+    ],
+    "target_column": "churn",
+    "task_type": "binary_classification",
+    "test_size": 0.2
+  },
+  "run_id": "ed4fa34609bd4ca9819b7c982ccd8888",
+  "started_at": "2026-09-29T07:25:46.170787+00:00",
+  "status": "stopped",
+  "summary": {
+    "final_evaluation_id": null,
+    "promotion_proposal_id": null,
+    "selected_experiment_id": "ed4fa346-trial-1",
+    "stop_reason": "The bounded experiment budget was exhausted before acceptance."
+  }
+}

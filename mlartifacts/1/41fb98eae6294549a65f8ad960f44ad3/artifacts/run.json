@@ -1,0 +1,102 @@
+{
+  "completed_at": "2026-09-29T07:32:43.037417+00:00",
+  "dataset": {
+    "columns": 7,
+    "path": "C:\\Users\\sande\\OneDrive\\Desktop\\mlops cp\\data\\raw\\dataset.csv",
+    "rows": 1000,
+    "sha256": "af58c78faf1679181f94b03d89c9a3515fb833cd60d8f0f6ad0bfab9aa892453"
+  },
+  "events": [
+    {
+      "action": "run_experiment",
+      "at": "2026-09-29T07:32:42.912118+00:00",
+      "kind": "decision",
+      "model_name": "logistic_regression",
+      "reason": "Start with the simplest approved baseline and evaluate f1 against 0.55.",
+      "strategy": "interpretable_baseline"
+    },
+    {
+      "action": "accept",
+      "at": "2026-09-29T07:32:42.999637+00:00",
+      "kind": "decision",
+      "model_name": "logistic_regression",
+      "reason": "logistic_regression achieved f1=0.6809, meeting the declared acceptance criterion.",
+      "strategy": "quality_gate_met"
+    }
+  ],
+  "experiments": [
+    {
+      "elapsed_seconds": 0.064,
+      "error": null,
+      "experiment_id": "fa838c5c-trial-1",
+      "metric": "f1",
+      "metrics": {
+        "accuracy": 0.775,
+        "f1": 0.6808510638297872,
+        "f1_macro": 0.7535529450423067,
+        "roc_auc": 0.8404074702886247
+      },
+      "model_name": "logistic_regression",
+      "score": 0.6808510638297872,
+      "status": "completed",
+      "strategy": "interpretable_baseline"
+    }
+  ],
+  "final_evaluation": {
+    "elapsed_seconds": 0.0358,
+    "error": null,
+    "experiment_id": "fa838c5c-final-holdout",
+    "metric": "f1",
+    "metrics": {
+      "accuracy": 0.65,
+      "f1": 0.453125,
+      "f1_macro": 0.5978860294117647,
+      "roc_auc": 0.7588266666666666
+    },
+    "model_name": "logistic_regression",
+    "score": 0.453125,
+    "status": "completed",
+    "strategy": "final_holdout_evaluation"
+  },
+  "objective": "Classify churn with F1 at least 0.55.",
+  "plan": {
+    "acceptance_threshold": 0.55,
+    "candidate_models": [
+      "logistic_regression",
+      "random_forest",
+      "xgboost"
+    ],
+    "max_experiments": 3,
+    "metric": "f1",
+    "objective": "Classify churn with F1 at least 0.55.",
+    "preprocessing": {
+      "categorical_imputation": "most_frequent",
+      "excluded_columns": [
+        "customer_id"
+      ],
+      "numeric_imputation": "median",
+      "one_hot_encode": true,
+      "scale_numeric": true
+    },
+    "random_state": 42,
+    "reasoning": [
+      "Selected 'churn' as the target from the objective/profile.",
+      "Inferred binary_classification from target type and objective wording.",
+      "Will optimise f1 against an explicit threshold of 0.55.",
+      "Candidate recipes are fixed allowlisted estimators; no generated code is executable.",
+      "Excluded likely identifier columns: customer_id."
+    ],
+    "target_column": "churn",
+    "task_type": "binary_classification",
+    "test_size": 0.2
+  },
+  "run_id": "fa838c5c09a2424a9af67a14d5a392d1",
+  "started_at": "2026-09-29T07:32:42.443903+00:00",
+  "status": "stopped",
+  "summary": {
+    "final_evaluation_id": "fa838c5c-final-holdout",
+    "promotion_proposal_id": null,
+    "selected_experiment_id": "fa838c5c-trial-1",
+    "stop_reason": "The selected validation winner did not meet the acceptance criterion on the untouched final holdout."
+  }
+}

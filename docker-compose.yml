@@ -1,0 +1,43 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["uvicorn", "autods.api:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      AUTODS_ARTIFACT_DIR: /app/artifacts
+      AUTODS_MODEL_DIR: /app/models
+      AUTODS_DATASET_DIR: /app/datasets
+      AUTODS_TRACKING_BACKEND: ${AUTODS_TRACKING_BACKEND:-json}
+      AUTODS_APPROVAL_TOKEN: "${AUTODS_APPROVAL_TOKEN:?Set a non-empty approval token in your environment}"
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
+      PYTHONPATH: /app/src
+    ports:
+      - "127.0.0.1:${AUTODS_API_PORT:-8000}:8000"
+    volumes:
+      - ./data:/app/data
+      - ./datasets:/app/datasets
+      - ./artifacts:/app/artifacts
+      - ./models:/app/models
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command:
+      ["streamlit", "run", "streamlit_app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true"]
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      AUTODS_DATASET_DIR: /app/datasets
+      AUTODS_TRACKING_BACKEND: ${AUTODS_TRACKING_BACKEND:-json}
+      PYTHONPATH: /app/src
+    ports:
+      - "127.0.0.1:${AUTODS_DASHBOARD_PORT:-8501}:8501"
+    volumes:
+      - ./datasets:/app/datasets
+      - ./artifacts:/app/artifacts
+      - ./models:/app/models
+    restart: unless-stopped

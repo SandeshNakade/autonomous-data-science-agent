@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Jupyter and editor state
+.ipynb_checkpoints/
+.vscode/
+.idea/
+
+# Runtime configuration and secrets
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+
+# Local data, models, and generated run output
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/*.dvc
+datasets/
+artifacts/*
+!artifacts/.gitkeep
+models/*
+!models/.gitkeep
+mlruns/
+
+# DVC local cache and temporary files (DVC metadata remains versioned)
+.dvc/cache/
+.dvc/tmp/
+
+# Logs and OS files
+*.log
+.DS_Store
+Thumbs.db
+
+mlflow.db

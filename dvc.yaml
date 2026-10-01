@@ -1,0 +1,17 @@
+# Controlled, reproducible example run. Update the CSV path and objective for
+# each demonstration; the package CLI executes the allowlisted workflow.
+stages:
+  autonomous_run:
+    cmd: >-
+      python -m autods.cli run
+      --dataset data/raw/dataset.csv
+      --objective "Predict the target column using the requested acceptance criteria"
+      --artifact-root artifacts/dvc-run
+      --model-root artifacts/dvc-run/models
+      --output artifacts/dvc-run/summary.json
+    deps:
+      - data/raw/dataset.csv
+      - src/autods
+    outs:
+      - artifacts/dvc-run:
+          cache: false
