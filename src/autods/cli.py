@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from .agent import create_decision_agent
 from .monitoring import (
     build_drift_baseline,
     compare_to_baseline,
@@ -42,6 +43,11 @@ def _parser() -> argparse.ArgumentParser:
     run.add_argument("--target")
     run.add_argument("--threshold", type=float)
     run.add_argument("--max-experiments", type=int, default=3)
+    run.add_argument(
+        "--agent",
+        choices=("heuristic", "openai"),
+        help="Decision layer to use. Defaults to AUTODS_AGENT_MODE or heuristic.",
+    )
     run.add_argument("--use-mlflow", action="store_true")
     run.add_argument("--artifact-root", default="artifacts")
     run.add_argument("--model-root", default="models")
@@ -76,6 +82,7 @@ def main(argv: list[str] | None = None) -> None:
         summary = AutonomousDataScienceOrchestrator(
             artifact_root=args.artifact_root,
             model_root=args.model_root,
+            agent=create_decision_agent(args.agent),
         ).run(
             args.dataset,
             args.objective,

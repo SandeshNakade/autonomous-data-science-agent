@@ -82,6 +82,56 @@ def test_binary_run_creates_pending_proposal_then_requires_manual_promotion(tmp_
     ) == ["no", "yes"]
 
 
+def test_reviewer_approved_candidate_requires_separate_admin_deployment(tmp_path):
+    """Review alone cannot serve a model; deployment creates an immutable release."""
+
+    values = np.tile(np.array([-3.0, -2.0, -1.0, 1.0, 2.0, 3.0]), 20)
+    dataset = _write_csv(
+        tmp_path,
+        "deployment-churn.csv",
+        pd.DataFrame(
+            {
+                "customer_id": np.arange(1, 121),
+                "signal": values,
+                "tenure": np.arange(120) % 12,
+                "segment": np.where(np.arange(120) % 2, "standard", "premium"),
+                "churn": np.where(values > 0, "yes", "no"),
+            }
+        ),
+    )
+    registry = LocalModelRegistry(tmp_path / "models")
+    summary = AutonomousDataScienceOrchestrator(
+        artifact_root=tmp_path / "artifacts",
+        registry=registry,
+    ).run(
+        dataset,
+        "Classify churn and achieve F1 at least 0.90.",
+        RunConfig(max_experiments=2, acceptance_threshold=0.90),
+    )
+
+    assert summary.promotion_proposal_id is not None
+    proposal_id = summary.promotion_proposal_id
+    reviewed = registry.review(proposal_id, "approve", "academic-reviewer", "Holdout evidence is sufficient.")
+    assert reviewed["status"] == "approved_for_deployment"
+    with pytest.raises(RegistryError, match="No approved production model"):
+        registry.load_production()
+
+    deployed = registry.deploy(proposal_id, "mlops-admin", "Release the approved candidate for local serving.")
+
+    assert deployed["status"] == "deployed"
+    assert deployed["deployment"]["deployed_by"] == "mlops-admin"
+    assert deployed["deployment"]["input_schema"]
+    assert registry.deployment_status()["state"] == "ready"
+    assert registry.list_deployments()[0]["proposal_id"] == proposal_id
+    assert (tmp_path / "models" / "releases" / proposal_id / "model.joblib").is_file()
+    assert registry.load_production().predict(
+        [
+            {"signal": -2.0, "tenure": 3, "segment": "standard"},
+            {"signal": 2.0, "tenure": 8, "segment": "premium"},
+        ]
+    ) == ["no", "yes"]
+
+
 @pytest.mark.parametrize(
     ("frame", "objective", "target", "expected_task", "expected_metric"),
     [

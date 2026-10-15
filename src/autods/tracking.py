@@ -58,9 +58,26 @@ class LocalExperimentTracker:
         self._record(run_id)["plan"] = plan.to_dict()
         self._persist(run_id)
 
-    def log_decision(self, run_id: str, decision: dict[str, Any]) -> None:
-        self._record(run_id)["events"].append({"at": _utc_now(), "kind": "decision", **decision})
+    def log_event(self, run_id: str, kind: str, message: str, **details: Any) -> None:
+        """Append a small, human-readable lifecycle event to a run record.
+
+        Events describe the deterministic workflow milestones.  They are kept
+        separate from model metrics so a UI (or an auditor) can show what the
+        system actually did without inferring progress from a JSON blob.
+        """
+
+        self._record(run_id)["events"].append(
+            {"at": _utc_now(), "kind": kind, "message": message, **details}
+        )
         self._persist(run_id)
+
+    def log_decision(self, run_id: str, decision: dict[str, Any]) -> None:
+        self.log_event(
+            run_id,
+            "decision",
+            f"Agent decision: {decision.get('action', 'recorded')}.",
+            **decision,
+        )
 
     def log_experiment(self, run_id: str, result: ExperimentResult) -> None:
         self._record(run_id)["experiments"].append(result.to_dict())

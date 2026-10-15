@@ -10,6 +10,11 @@ services:
       AUTODS_DATASET_DIR: /app/datasets
       AUTODS_TRACKING_BACKEND: ${AUTODS_TRACKING_BACKEND:-json}
       AUTODS_APPROVAL_TOKEN: "${AUTODS_APPROVAL_TOKEN:?Set a non-empty approval token in your environment}"
+      AUTODS_AGENT_MODE: ${AUTODS_AGENT_MODE:-heuristic}
+      AUTODS_LLM_MODEL: ${AUTODS_LLM_MODEL:-gpt-4.1-mini}
+      AUTODS_LLM_TIMEOUT_SECONDS: ${AUTODS_LLM_TIMEOUT_SECONDS:-30}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-}
       PYTHONPATH: /app/src
     ports:
@@ -22,6 +27,8 @@ services:
     restart: unless-stopped
 
   dashboard:
+    # Trusted local legacy demo only; not protected by the new web-session RBAC.
+    profiles: ["legacy-streamlit"]
     build:
       context: .
       dockerfile: Dockerfile
@@ -33,6 +40,11 @@ services:
     environment:
       AUTODS_DATASET_DIR: /app/datasets
       AUTODS_TRACKING_BACKEND: ${AUTODS_TRACKING_BACKEND:-json}
+      AUTODS_AGENT_MODE: ${AUTODS_AGENT_MODE:-heuristic}
+      AUTODS_LLM_MODEL: ${AUTODS_LLM_MODEL:-gpt-4.1-mini}
+      AUTODS_LLM_TIMEOUT_SECONDS: ${AUTODS_LLM_TIMEOUT_SECONDS:-30}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       PYTHONPATH: /app/src
     ports:
       - "127.0.0.1:${AUTODS_DASHBOARD_PORT:-8501}:8501"

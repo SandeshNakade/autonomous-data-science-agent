@@ -23,6 +23,7 @@ def _isolate_api(tmp_path, monkeypatch):
     monkeypatch.setenv("AUTODS_DATASET_DIR", str(tmp_path / "datasets"))
     monkeypatch.setenv("AUTODS_ARTIFACT_DIR", str(tmp_path / "artifacts"))
     monkeypatch.setenv("AUTODS_MODEL_DIR", str(tmp_path / "models"))
+    monkeypatch.setenv("AUTODS_AUTH_DB", str(tmp_path / "auth.sqlite3"))
     monkeypatch.setenv("AUTODS_APPROVAL_TOKEN", "test-secret-token")
     # Re-import to pick up the monkeypatched env vars
     import autods.api as api_module
@@ -36,8 +37,12 @@ def _isolate_api(tmp_path, monkeypatch):
 
 @pytest.fixture
 def client():
+    from autods.auth import create_user
     from autods.api import app
-    return TestClient(app)
+    create_user("admin@example.test", "Test Admin", "admin", "test-password-123")
+    client = TestClient(app, headers={"X-AutoDS-Client": "web"})
+    assert client.post("/auth/login", json={"email": "admin@example.test", "password": "test-password-123"}).status_code == 200
+    return client
 
 
 @pytest.fixture
@@ -116,6 +121,20 @@ class TestRunEndpoints:
         # Get specific run
         get_response = client.get(f"/runs/{run_data['run_id']}")
         assert get_response.status_code == 200
+        record = get_response.json()
+        event_kinds = [event["kind"] for event in record["events"]]
+        assert {
+            "dataset_profiled",
+            "plan_validated",
+            "data_prepared",
+            "experiment_started",
+            "experiment_completed",
+            "holdout_evaluation_started",
+            "holdout_evaluation_completed",
+            "candidate_submitted",
+            "run_completed",
+        }.issubset(event_kinds)
+        assert all(event.get("message") for event in record["events"])
 
     def test_invalid_run_id_rejected(self, client):
         response = client.get("/runs/not-a-valid-id")

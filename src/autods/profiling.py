@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import re
+import csv
+import warnings
 from pathlib import Path
 
 import pandas as pd
@@ -30,7 +32,23 @@ def read_csv_dataset(path: str | Path) -> pd.DataFrame:
     if path.stat().st_size > MAX_DATASET_BYTES:
         raise DatasetError("Dataset exceeds the 200 MB prototype limit")
     try:
-        data = pd.read_csv(path)
+        # Check the original header before pandas can rename duplicate/empty
+        # names. Keep names intact so the profile and training use the same schema.
+        with path.open(encoding="utf-8-sig", newline="") as source:
+            header = next(csv.reader(source, strict=True), [])
+        if len(header) < 2:
+            raise DatasetError("Dataset must have at least one row and two columns")
+        if len(header) > MAX_DATASET_COLUMNS:
+            raise DatasetError("Dataset exceeds the prototype limit of 500 columns")
+        if any(not name.strip() for name in header):
+            raise DatasetError("Every column must have a non-empty name")
+        if len(set(header)) != len(header):
+            raise DatasetError("Dataset contains duplicate column names")
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", pd.errors.ParserWarning)
+            data = pd.read_csv(path, encoding="utf-8-sig", nrows=MAX_DATASET_ROWS + 1, index_col=False)
+    except DatasetError:
+        raise
     except Exception as exc:  # pandas presents useful parser diagnostics
         raise DatasetError(f"Could not read CSV: {exc}") from exc
     if data.empty or data.shape[1] < 2:
@@ -75,6 +93,11 @@ def profile_dataset(path: str | Path) -> DatasetProfile:
     """Return compact, serialisable facts; no model or code is executed here."""
 
     data = read_csv_dataset(path)
+    return profile_frame(data, path)
+
+
+def profile_frame(data: pd.DataFrame, path: str | Path) -> DatasetProfile:
+    """Profile an already validated frame without parsing the CSV a second time."""
     rows = len(data)
     columns: list[ColumnProfile] = []
     target_candidates: list[str] = []

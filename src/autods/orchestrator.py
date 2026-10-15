@@ -7,7 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from .agent import DecisionAgent, HeuristicDecisionAgent
+from .agent import DecisionAgent, create_decision_agent
 from .monitoring import build_drift_baseline
 from .policy import PolicyViolation, metric_higher_is_better, validate_plan
 from .preprocessing import PreparationError, split_dataset
@@ -62,7 +62,10 @@ class AutonomousDataScienceOrchestrator:
         registry: LocalModelRegistry | None = None,
     ) -> None:
         self.artifact_root = Path(artifact_root)
-        self.agent = agent or HeuristicDecisionAgent()
+        # The default remains offline and reproducible. Setting
+        # AUTODS_AGENT_MODE=openai opts every surface (CLI, API, dashboard)
+        # into the constrained structured LLM decision adapter.
+        self.agent = agent or create_decision_agent()
         self.tracker = tracker
         self.registry = registry or LocalModelRegistry(model_root)
 
@@ -78,6 +81,13 @@ class AutonomousDataScienceOrchestrator:
             self.artifact_root / "runs", use_mlflow=config.use_mlflow
         )
         run_id = tracker.start_run(objective, profile)
+        tracker.log_event(
+            run_id,
+            "dataset_profiled",
+            "Dataset profile created from the immutable input.",
+            rows=profile.rows,
+            columns=len(profile.columns),
+        )
         plan: MLPlan | None = None
         history: list[ExperimentResult] = []
         trace: list[dict[str, Any]] = []
@@ -102,12 +112,29 @@ class AutonomousDataScienceOrchestrator:
             )
             validate_plan(plan)
             tracker.log_plan(run_id, plan)
+            tracker.log_event(
+                run_id,
+                "plan_validated",
+                "Agent plan passed policy validation.",
+                target_column=plan.target_column,
+                metric=plan.metric,
+                max_experiments=plan.max_experiments,
+            )
 
             data = read_csv_dataset(dataset_path)
             if dataset_hash(dataset_path) != profile.data_hash:
                 raise DatasetError("Dataset changed after profiling; run was stopped before training")
             prepared_data = split_dataset(data, plan)
             split = prepared_data.validation_split
+            tracker.log_event(
+                run_id,
+                "data_prepared",
+                "Created training, validation, and untouched holdout splits.",
+                feature_count=len(split.feature_columns),
+                training_rows=len(split.X_train),
+                validation_rows=len(split.X_test),
+                holdout_rows=len(prepared_data.holdout_split.X_test),
+            )
             decision = self.agent.initial_decision(plan)
             stop_reason = ""
             accepted = False
@@ -132,15 +159,43 @@ class AutonomousDataScienceOrchestrator:
                 if decision.model_name in {item.model_name for item in history}:
                     raise PolicyViolation("Agent attempted a duplicate model recipe")
                 experiment_number = len(history) + 1
+                experiment_id = f"{run_id[:8]}-trial-{experiment_number}"
+                tracker.log_event(
+                    run_id,
+                    "experiment_started",
+                    f"Started experiment {experiment_number} with {decision.model_name}.",
+                    experiment_id=experiment_id,
+                    model_name=decision.model_name,
+                    strategy=decision.strategy,
+                )
                 result = train_and_evaluate(
                     split=split,
                     plan=plan,
                     model_name=decision.model_name,
-                    experiment_id=f"{run_id[:8]}-trial-{experiment_number}",
+                    experiment_id=experiment_id,
                     strategy=decision.strategy,
                 )
                 history.append(result)
                 tracker.log_experiment(run_id, result)
+                tracker.log_event(
+                    run_id,
+                    (
+                        "experiment_completed"
+                        if result.status == "completed"
+                        else "experiment_failed"
+                    ),
+                    (
+                        f"Experiment {experiment_number} completed."
+                        if result.status == "completed"
+                        else f"Experiment {experiment_number} did not complete."
+                    ),
+                    experiment_id=result.experiment_id,
+                    model_name=result.model_name,
+                    metric=result.metric,
+                    score=result.score,
+                    elapsed_seconds=result.elapsed_seconds,
+                    error=result.error,
+                )
                 decision = self.agent.assess_results(plan, history)
 
             selected = _best_result(history, plan.metric)
@@ -155,14 +210,40 @@ class AutonomousDataScienceOrchestrator:
             if accepted and quality_gate_met and selected:
                 # The agent saw validation metrics only. Refit the selected fixed
                 # recipe on fit+validation data and touch the holdout exactly once.
+                holdout_id = f"{run_id[:8]}-final-holdout"
+                tracker.log_event(
+                    run_id,
+                    "holdout_evaluation_started",
+                    "Refitting the selected recipe and evaluating it once on the untouched holdout.",
+                    experiment_id=holdout_id,
+                    model_name=selected.model_name,
+                )
                 final_evaluation = train_and_evaluate(
                     split=prepared_data.holdout_split,
                     plan=plan,
                     model_name=selected.model_name,
-                    experiment_id=f"{run_id[:8]}-final-holdout",
+                    experiment_id=holdout_id,
                     strategy="final_holdout_evaluation",
                 )
                 tracker.log_final_evaluation(run_id, final_evaluation)
+                tracker.log_event(
+                    run_id,
+                    (
+                        "holdout_evaluation_completed"
+                        if final_evaluation.status == "completed"
+                        else "holdout_evaluation_failed"
+                    ),
+                    (
+                        "Final holdout evaluation completed."
+                        if final_evaluation.status == "completed"
+                        else "Final holdout evaluation did not complete."
+                    ),
+                    experiment_id=final_evaluation.experiment_id,
+                    metric=final_evaluation.metric,
+                    score=final_evaluation.score,
+                    elapsed_seconds=final_evaluation.elapsed_seconds,
+                    error=final_evaluation.error,
+                )
                 if not _meets_acceptance(final_evaluation, plan):
                     accepted = False
                     stop_reason = (
@@ -198,8 +279,25 @@ class AutonomousDataScienceOrchestrator:
                         "holdout_metrics": final_evaluation.metrics,
                         "dataset_sha256": profile.data_hash,
                         "plan": plan.to_dict(),
+                        "input_schema": [
+                            {
+                                "name": column.name,
+                                "inferred_type": column.inferred_type,
+                                "pandas_dtype": column.pandas_dtype,
+                            }
+                            for column in profile.columns
+                            if column.name != plan.target_column
+                            and column.name not in plan.preprocessing.excluded_columns
+                        ],
                     },
                     monitoring_baseline=monitoring_baseline.to_dict(),
+                )
+                tracker.log_event(
+                    run_id,
+                    "candidate_submitted",
+                    "Candidate model submitted for explicit human approval.",
+                    proposal_id=proposal_id,
+                    model_name=selected.model_name,
                 )
                 status = RunStatus.NEEDS_REVIEW
                 stop_reason = (
@@ -225,6 +323,12 @@ class AutonomousDataScienceOrchestrator:
             )
         except (DatasetError, PreparationError, PolicyViolation, ValueError) as exc:
             trace.append({"action": "stop", "strategy": "safety_or_input_failure", "reason": str(exc)})
+            tracker.log_event(
+                run_id,
+                "workflow_failed",
+                "Workflow stopped by a safety or input check.",
+                reason=str(exc),
+            )
             summary = RunSummary(
                 run_id=run_id,
                 status=RunStatus.FAILED,
@@ -245,6 +349,12 @@ class AutonomousDataScienceOrchestrator:
                     "reason": f"{type(exc).__name__}: {exc}",
                 }
             )
+            tracker.log_event(
+                run_id,
+                "workflow_failed",
+                "Workflow stopped because an unexpected error was recorded.",
+                reason=trace[-1]["reason"],
+            )
             summary = RunSummary(
                 run_id=run_id,
                 status=RunStatus.FAILED,
@@ -257,5 +367,12 @@ class AutonomousDataScienceOrchestrator:
                 promotion_proposal_id=None,
                 stop_reason=trace[-1]["reason"],
             )
+        tracker.log_event(
+            run_id,
+            "run_completed",
+            f"Workflow finished with status {summary.status.value}.",
+            status=summary.status.value,
+            stop_reason=summary.stop_reason,
+        )
         tracker.complete(run_id, summary)
         return summary

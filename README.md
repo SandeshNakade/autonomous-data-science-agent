@@ -12,7 +12,54 @@ The agent is an orchestration and decision layer, not a code-execution environme
 - Iterative feedback loop: **analyse → decide → train → evaluate → improve**
 - Bounded experiments, explicit acceptance criteria, and stopping conditions
 - Local JSON experiment tracking by default, with optional MLflow tracking
-- FastAPI serving, Streamlit dashboard, Docker deployment, DVC pipeline/data versioning, and optional Evidently reporting
+- FastAPI serving, a new React web workspace (stages 01–13), a legacy Streamlit demo, Docker deployment, DVC pipeline/data versioning, and optional Evidently reporting
+
+## New web interface
+
+The custom UI is being built **step by step**. Stage 01 includes welcome/sign-in,
+backend-enforced roles, lifecycle navigation, and a read-only overview with real
+saved runs displayed in a table. Stage 02 adds Dataset Management: CSV uploads,
+library/search, row previews, column profiles, and data-quality checks. Stage 03
+adds AI Agent Planning: a declarative, policy-validated plan for a selected
+dataset and objective, displayed as readable cards and tables rather than raw
+JSON. It does not train a model. Stage 04 adds Workflow Execution: an explicit
+confirmation before a bounded server-side run, a readable lifecycle timeline,
+agent decisions, experiment/result tables, final-holdout evidence, and a clear
+human-approval handoff. Stage 05 adds Experiments & Model Comparison: it reads
+saved run artifacts into metric/timing tables and within-run comparison cards,
+while keeping model approval separate. Stage 06 adds the Model Approval Center:
+reviewers and administrators can approve or reject a submitted candidate with a
+required reason and audit trail. Approval means only **approved for deployment**;
+it never deploys, replaces, or serves a production model. Stage 07 adds Model
+Deployment: only an administrator can activate a reviewer-approved candidate,
+with a required release note, retained local version metadata, endpoint status,
+and a form-based single-record prediction test. Stage 08 adds Monitoring & Drift:
+an administrator can compare an uploaded batch with the active release baseline;
+PSI/TVD evidence, alerts, report history, and any controlled retraining request are
+rendered as readable cards and tables. It measures feature/data drift only—prediction
+drift and model performance need a future feedback/outcome feed. A drift check never
+starts retraining, promotes a model, or changes the endpoint.
+The first supporting page, Experiment History, adds searchable saved workflows with
+their persisted plan, dataset fingerprint, controlled experiment results, and final
+handoff evidence—again presented as readable tables and cards rather than raw JSON.
+The Model Registry adds candidate, reviewer, deployment, and audit lineage across the
+complete model lifecycle, without exposing fitted model files or adding a shortcut around
+the separate approval and deployment controls.
+Alerts & Notifications adds a read-only in-app inbox for genuine unresolved feature-drift,
+failed-workflow, and pending-review records. It has no fabricated delivery status or email,
+SMS, push, acknowledgement, or escalation workflow.
+Audit Logs adds a read-only, searchable view of retained model-governance events,
+feature-drift checks, and workflow outcomes, linking safely to the underlying evidence.
+It deliberately does not claim to be a centralized append-only ledger or show unrecorded
+actors as if they were known.
+Settings & User Management completes the planned web workspace: administrators can safely
+change another local account's role or active state, revoking its sessions and recording a
+workspace audit event. Account provisioning and password management remain terminal-only.
+
+See [Web workspace setup and phased plan](docs/WEB_WORKSPACE.md) for account creation,
+build/run commands, permission boundaries, and the next implementation stages.
+The API now requires a signed-in session for data/model endpoints. The legacy
+Streamlit demo and local CLI are trusted single-user tools, not RBAC-protected web clients.
 
 ## Design at a glance
 
@@ -51,7 +98,7 @@ models/                # local candidate/promoted model files
 tests/
 ```
 
-## Quick start (local development)
+## Legacy ML demo (local development)
 
 Prerequisites: Python 3.10+ (3.11 recommended) and a CSV dataset. Install the optional extras used by the complete local prototype:
 
@@ -59,7 +106,7 @@ Prerequisites: Python 3.10+ (3.11 recommended) and a CSV dataset. Install the op
 py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -e ".[dashboard,mlops,boosting]"
+pip install -e ".[dashboard,mlops,boosting,llm]"
 ```
 
 Start the API in one terminal:
@@ -86,6 +133,18 @@ For a scriptable run, use the same controlled workflow through the CLI:
 python -m autods.cli run --dataset data/raw/dataset.csv --objective "Predict churn with F1 at least 0.75." --target churn --output artifacts/summary.json
 ```
 
+## Optional OpenAI decision adapter
+
+The default `heuristic` decision agent is offline and deterministic. To use a real OpenAI-backed decision layer, install the `llm` extra, set an API key in the environment (never commit it), and explicitly select `openai`:
+
+```powershell
+$env:OPENAI_API_KEY = "your-api-key"
+$env:AUTODS_LLM_MODEL = "gpt-4.1-mini"
+python -m autods.cli run --agent openai --dataset data/raw/dataset.csv --objective "Classify churn with F1 at least 0.75." --target churn
+```
+
+The adapter sends only the natural-language objective, aggregate column profile, allowlisted choices, and experiment metrics—not CSV rows, fitted models, local paths, shell commands, or API keys. It uses OpenAI Structured Outputs and can recommend only a target, task, metric, approved model order, or the next declarative experiment action. The local policy layer still validates every plan, enforces the experiment budget and acceptance threshold, evaluates the untouched holdout, and requires human approval before promotion. Set `AUTODS_AGENT_MODE=openai` to enable the same adapter for the API, Streamlit dashboard, or Docker services; `heuristic` remains the default.
+
 ## Tracking and model promotion
 
 The default tracking backend is local JSON: one readable audit record is persisted per run under `artifacts/runs/<run-id>/run.json`. This keeps the initial demo self-contained.
@@ -107,7 +166,8 @@ MLflow is optional; point `MLFLOW_TRACKING_URI` at an existing tracking service 
 
 ## Docker
 
-The supplied Compose setup runs the FastAPI API and Streamlit dashboard, persisting uploaded datasets, artifacts, and local models on the host:
+The supplied Compose setup builds the React frontend and serves it with FastAPI,
+persisting uploaded datasets, accounts, artifacts, and local models on the host:
 
 ```powershell
 $env:AUTODS_APPROVAL_TOKEN = "replace-with-a-long-local-secret"
@@ -116,8 +176,14 @@ docker compose up --build
 
 Compose binds its demo ports to `127.0.0.1` and requires the approval token above; it is not intended as an internet-facing authentication solution. It uses the JSON tracker by default. For an MLflow-tracked run, invoke the controlled CLI with `--use-mlflow` and set `MLFLOW_TRACKING_URI` for that process.
 
+- Web workspace: [http://localhost:8000](http://localhost:8000)
 - API: [http://localhost:8000/docs](http://localhost:8000/docs)
-- Dashboard: [http://localhost:8501](http://localhost:8501)
+
+Provision your first account with `docker compose exec api python -m autods.auth
+--email you@example.com --name "Your Name" --role admin` (enter your password at the prompt).
+The old, unprotected Streamlit demo is available only when explicitly started with
+`docker compose --profile legacy-streamlit up --build` on port 8501. It is not part of
+the new role-protected website.
 
 ## DVC workflow
 
@@ -144,7 +210,7 @@ The stage calls the package CLI rather than arbitrary agent-generated code. Gene
 - The agent receives structured tool results and emits validated plans; it does not execute free-form Python.
 - Training uses only allowlisted preprocessing steps and model families.
 - The loop observes configured experiment budgets, acceptance criteria, and stopping conditions.
-- Promotion is a separate, manual approval action.
+- Human review is separate from deployment; only an administrator can deploy a reviewer-approved candidate.
 - Promotion saves a feature-only drift baseline alongside the approved model; drift detection creates a reviewed retraining proposal rather than silently changing production.
 
 This is intentionally a small, explainable prototype—not a general-purpose AutoML platform.

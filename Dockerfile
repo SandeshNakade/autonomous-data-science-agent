@@ -1,3 +1,10 @@
+FROM node:24-alpine AS web
+WORKDIR /web
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend ./
+RUN npm run build
+
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -14,9 +21,10 @@ RUN groupadd --gid 10001 autods \
 COPY pyproject.toml README.md ./
 COPY src ./src
 RUN python -m pip install --no-cache-dir --upgrade pip \
-    && python -m pip install --no-cache-dir ".[dashboard,mlops,boosting]"
+    && python -m pip install --no-cache-dir ".[dashboard,mlops,boosting,llm]"
 
 COPY --chown=autods:autods . .
+COPY --from=web --chown=autods:autods /web/dist /app/frontend/dist
 RUN mkdir -p /app/datasets /app/artifacts /app/models \
     && chown -R autods:autods /app
 
@@ -24,5 +32,6 @@ USER autods
 
 EXPOSE 8000 8501
 
-# The Streamlit service overrides this command in docker-compose.yml.
+# FastAPI serves the new web workspace and its API from the same origin.
+# The optional legacy-streamlit Compose profile overrides this command.
 CMD ["uvicorn", "autods.api:app", "--host", "0.0.0.0", "--port", "8000"]
